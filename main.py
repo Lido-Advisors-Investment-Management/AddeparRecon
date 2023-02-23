@@ -4,7 +4,7 @@ will either POST the job to the Addepar Jobs API, query the status and download 
 the data into the database by executing the job's import proc, or execute the postimport proc to
 scrub the data in the dbimport table and move it to the target table.
 """
-# !/usr/bin/env python3
+
 from configparser import ConfigParser
 import logging.config
 import base64
