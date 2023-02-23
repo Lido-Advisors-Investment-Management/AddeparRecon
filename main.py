@@ -368,7 +368,8 @@ def exec_import_proc(conn: pyodbc.Connection, sql: str) -> int:
 
 
 if __name__ == "__main__":
-    PROJECT_PATH = 'C:/Users/bstrathman/OneDrive - Lido Advisors, LLC/Documents/GitHub/AddeparRecon'
+    # Get the relative project path and determine locations of the log dir and config file
+    PROJECT_PATH = os.path.dirname(os.path.abspath(__file__)).replace('\\', '/')
     log_path = f"{PROJECT_PATH}/logs"
     config = ConfigParser()
     config.read(f"{PROJECT_PATH}/config.ini")
@@ -393,7 +394,7 @@ if __name__ == "__main__":
     # Get Addepar API information
     addepar_key = config.get('addepar_api', 'key')
     addepar_secret = config.get('addepar_api', 'secret')
-    api_timeout = config.get('addepar.api', 'timeout')
+    api_timeout = int(config.get('addepar_api', 'timeout'))
     addepar_header = addepar_params.HEADER
     BASE_URL = addepar_params.BASE_URL
     addepar_auth_string = create_auth_string(addepar_key, addepar_secret)
