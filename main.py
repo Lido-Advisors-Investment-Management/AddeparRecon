@@ -263,6 +263,9 @@ def update_job_status_db(conn: pyodbc.Connection, job_id: int, to_status: str, t
         bool: True if job status was successfully updated, False if error occurred
     """
 
+    _log_str = f"Updating Job ID = {job_id} status in database to '{to_status}'."
+    logger.info(_log_str)
+
     # Build the SQL statement
     sql = f"EXEC Addepar.usp_UpdateJobQueueStatus @JobQueueIdToUpdate={job_id}, "
     sql += f"@JobDetails='{to_job_details}', @UpdateToStatusName='{to_status}'"
@@ -384,6 +387,7 @@ def process_all_jobs(jobs: list) -> bool:
     Return:
         bool: denoting if any of the Addepar jobs can be rerun immediately before exiting python.
     """
+
     # Initiate the _rerun flag variable
     _rerun = False
 
@@ -406,8 +410,9 @@ def process_all_jobs(jobs: list) -> bool:
         """
 
         # Direct traffic based on the current job status
-        log_str = f"Processing Job ID = {db_job_id}, job type = {job_name}, as of = {job_date}, status = {job_status}"
-        logger.info(log_str)
+        _log_str = f"\nProcessing Job ID = {db_job_id}, job type = {job_name}, "\
+                   f"as of = {job_date}, status = {job_status}"
+        logger.info(_log_str)
         match job_status:
             case 'Queued':
                 # Job is queued, the Addepar API job needs to be posted
@@ -416,12 +421,9 @@ def process_all_jobs(jobs: list) -> bool:
                 # If the post_addepar_job returns None, an error was encountered
                 # Otherwise, it returns the integer Addepar API Job ID of the posted job
                 if addepar_job_id is None:
-                    log_str = f"Updating Job ID = {db_job_id} status in database from 'Queued' to 'Error'"
-                    logger.info(log_str)
                     update_job_status_db(db_conn, db_job_id, 'Error',
                                          'Failure posting job to Addepar - see logs for details.')
                 else:
-                    logger.info("Updating job status in database from 'Queued' to 'Posted'")
                     update_job_status_db(db_conn, db_job_id, 'Posted', addepar_job_id)
 
             case 'Posted':
@@ -430,8 +432,6 @@ def process_all_jobs(jobs: list) -> bool:
 
                 if job_pct_complete is None:
                     # Error was encountered checking the status of the job
-                    log_str = f"Updating Job ID = {db_job_id} status in database from 'Posted' to 'Error'"
-                    logger.info(log_str)
                     update_job_status_db(db_conn, db_job_id, 'Error',
                                          'Failure downloading API data from Addepar - see logs for details.')
 
@@ -445,22 +445,21 @@ def process_all_jobs(jobs: list) -> bool:
                     data_save_path = f'{PROJECT_PATH}/data/{job_name}_{job_date}.json'
 
                     if download_addepar_job(BASE_URL, job_details, addepar_header, data_save_path, api_timeout):
-                        logger.info("Updating job status in database from 'Posted' to 'Downloaded'")
                         update_job_status_db(db_conn, db_job_id, 'Downloaded', data_save_path)
 
                         # If the job data was successfully downloaded, this job can be rerun again
                         rerun_job = True
 
                     else:
-                        logger.error("Error importing job data into dbimport table of database.")
-                        logger.info("Updating job status in database from 'Posted' to 'Error'")
+                        _log_str = f"Error downloading {job_name} data from Addepar for Job ID = {db_job_id}."
+                        logger.error(_log_str)
                         update_job_status_db(db_conn, db_job_id, 'Error',
-                                             'Error import API data to database - see logs for details.')
+                                             'Error downloading API data from Addepar - see logs for details.')
 
                 else:
                     # Somehow got a percent_complete <0 or >1  -->  Throw an error
-                    log_str = f"ValueError: percent_complete = {job_pct_complete}. Should be between 0 and 1"
-                    logger.error(log_str)
+                    _log_str = f"ValueError: percent_complete = {job_pct_complete}. Value must be between 0 and 1"
+                    logger.error(_log_str)
 
             case 'Downloaded':
                 # Addepar API job data has been downloaded, import the data into the dbimport table
@@ -468,10 +467,8 @@ def process_all_jobs(jobs: list) -> bool:
 
                 # If an error was encountered, the method will return -1
                 if rows_inserted == -1:
-                    log_str = f"Error importing {job_name} data into the dbimport table for Job ID = {db_job_id}."
-                    logger.error(log_str)
-                    log_str = f"Updating Job ID = {db_job_id} status in database from 'Downloaded' to 'Error'."
-                    logger.info(log_str)
+                    _log_str = f"Error importing {job_name} data into the dbimport table for Job ID = {db_job_id}."
+                    logger.error(_log_str)
                     update_job_status_db(db_conn, db_job_id, 'Error',
                                          'Failure importing data into dbimport table - see logs for details.')
 
@@ -479,10 +476,8 @@ def process_all_jobs(jobs: list) -> bool:
                     rerun_job = True
 
                 if rows_inserted >= 0:
-                    log_str = f"{job_name} data imported into dbimport table for Job ID = {db_job_id}."
-                    logger.info(log_str)
-                    log_str = f"Updating Job ID = {db_job_id} status in database from 'Downloaded' to 'Imported'"
-                    logger.info(log_str)
+                    _log_str = f"{job_name} data imported into dbimport table for Job ID = {db_job_id}."
+                    logger.info(_log_str)
                     update_job_status_db(db_conn, db_job_id, 'Imported', rows_inserted)
 
             case 'Imported':
@@ -491,17 +486,13 @@ def process_all_jobs(jobs: list) -> bool:
 
                 # If an error was encountered, the method will return -1
                 if rows_inserted == -1:
-                    log_str = f"Error processing {job_name} data into the target table for Job ID = {db_job_id}."
-                    logger.error(log_str)
-                    log_str = f"Updating Job ID = {db_job_id} status in database from 'Imported' to 'Error'."
-                    logger.info(log_str)
+                    _log_str = f"Error processing {job_name} data into the target table for Job ID = {db_job_id}."
+                    logger.error(_log_str)
                     update_job_status_db(db_conn, db_job_id, 'Error',
-                                         'Failure importing data into target table - see logs for details.')
+                                         'Failure inserting data into target table - see logs for details.')
 
                 if rows_inserted >= 0:
-                    log_str = f"{job_name} data processed into target table for Job ID = {db_job_id}."
-                    logger.info(log_str)
-                    logger.info("Updating job status in database from 'Imported' to 'Completed'")
+                    logger.info("Job data scrubbed and inserted into target table.")
                     update_job_status_db(db_conn, db_job_id, 'Completed', rows_inserted)
 
             case _:
