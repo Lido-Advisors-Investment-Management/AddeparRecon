@@ -410,7 +410,7 @@ def process_all_jobs(jobs: list) -> bool:
         """
 
         # Direct traffic based on the current job status
-        _log_str = f"\nProcessing Job ID = {db_job_id}, job type = {job_name}, "\
+        _log_str = f"Processing Job ID = {db_job_id}, job type = {job_name}, "\
                    f"as of = {job_date}, status = {job_status}"
         logger.info(_log_str)
         match job_status:
@@ -472,13 +472,13 @@ def process_all_jobs(jobs: list) -> bool:
                     update_job_status_db(db_conn, db_job_id, 'Error',
                                          'Failure importing data into dbimport table - see logs for details.')
 
-                    # If the job data was successfully imported, this job can be rerun again
-                    rerun_job = True
-
                 if rows_inserted >= 0:
                     _log_str = f"{job_name} data imported into dbimport table for Job ID = {db_job_id}."
                     logger.info(_log_str)
                     update_job_status_db(db_conn, db_job_id, 'Imported', rows_inserted)
+
+                    # If the job data was successfully imported, this job can be rerun again
+                    rerun_job = True
 
             case 'Imported':
                 # Job data has been imported to the dbimport table, run the post import proc
@@ -501,6 +501,8 @@ def process_all_jobs(jobs: list) -> bool:
                     f"handle the case where Job Status = {job_status}."
                 logger.error(log_str)
 
+        _log_str = f"Processing Job ID = {db_job_id} complete.\n"
+        logger.info(_log_str)
         # If this job can be rerun again, update the overall rerun flag
         _rerun = _rerun or rerun_job
 
@@ -551,7 +553,7 @@ if __name__ == "__main__":
         log_str = f"Connected to {DATABASE} database on {SERVER} server."
         logger.info(log_str)
         open_jobs = dbutil.query_to_list(db_conn, SQL)
-        log_str = f"{len(open_jobs)} open Addepar Jobs"
+        log_str = f"{len(open_jobs)} open Addepar Jobs\n"
         logger.info(log_str)
 
         rerun = process_all_jobs(open_jobs)
