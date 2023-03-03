@@ -367,56 +367,31 @@ def exec_import_proc(conn: pyodbc.Connection, sql: str) -> int:
     return _rows_inserted
 
 
-if __name__ == "__main__":
-    # Get the relative project path and determine locations of the log dir and config file
-    PROJECT_PATH = os.path.dirname(os.path.abspath(__file__)).replace('\\', '/')
-    log_path = f"{PROJECT_PATH}/logs"
-    config = ConfigParser()
-    config.read(f"{PROJECT_PATH}/config.ini")
+def process_all_jobs(jobs: list) -> bool:
+    """
+    Process all the open Addepar jobs and return if any of the open jobs can be rerun immediately,
+    before stopping the programs execution. Jobs can only be reprocessed immediately after
+    successful completion of either the download or import steps.
 
-    # Set up logging
-    project_name = config.get('environment', 'project')
-    log_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    logging.config.fileConfig(
-        f"{PROJECT_PATH}/logging_config.ini",
-        disable_existing_loggers=False,
-        defaults={"logfilename": f"{log_path}/{project_name}_{log_timestamp}.log"}
-    )
-    logger = logging.getLogger(__name__)
+    **Note: as of 2023-01-18
+    Currently no step is re-tried if it fails the first time. It is unknown how frequently posting
+    or getting data from the Addepar API will fail. If failures are frequent and it is found that
+    adding a retry fixes most failures, automatic retries will be added later.
 
-    # Get all the required parameters
-    ############################################################################################
-    # Get database information
-    SERVER = config.get('database', 'server')
-    DATABASE = config.get('database', 'database')
-    SQL = "EXEC Addepar.usp_GetOpenJobs"
+    Args:
+        jobs (list): open Addepar jobs with all the details required to complete the next process
 
-    # Get Addepar API information
-    addepar_key = config.get('addepar_api', 'key')
-    addepar_secret = config.get('addepar_api', 'secret')
-    api_timeout = int(config.get('addepar_api', 'timeout'))
-    addepar_header = addepar_params.HEADER
-    BASE_URL = addepar_params.BASE_URL
-    addepar_auth_string = create_auth_string(addepar_key, addepar_secret)
-    # Add the auth string to the API header
-    addepar_header['Authorization'] = addepar_auth_string
-
-    # Core of the program
-    ############################################################################################
-    # Get data on all the open jobs from the database
-    db_conn = dbutil.connect_to_database(SERVER, DATABASE)
-    log_str = f"Connected to {DATABASE} database on {SERVER} server."
-    logger.info(log_str)
-    open_jobs = dbutil.query_to_list(db_conn, SQL)
-    log_str = f"{len(open_jobs)} open Addepar Jobs"
-    logger.info(log_str)
+    Return:
+        bool: denoting if any of the Addepar jobs can be rerun immediately before exiting python.
+    """
+    # Initiate the _rerun flag variable
+    _rerun = False
 
     # Loop through each open job
-    # *Note: as of 2023-01-18
-    # Currently no step is re-tried if it fails the first time. It is unknown how frequently posting
-    # or getting data from the Addepar API will fail. If failures are frequent and it is found that
-    # adding a retry fixes most failures, automatic retries will be added later.
     for job in open_jobs:
+        # Initialize the rerun flag for this particular job
+        rerun_job = False
+
         # Unpack the SQL record dictionary returned by the Addepar.usp_GetOpenJobs proc
         db_job_id = job['ID']                   # Specific **database** ID of the job
         job_name = job['JobName']               # Name of the queued job ('Accounts' or 'Holdings')
@@ -472,6 +447,10 @@ if __name__ == "__main__":
                     if download_addepar_job(BASE_URL, job_details, addepar_header, data_save_path, api_timeout):
                         logger.info("Updating job status in database from 'Posted' to 'Downloaded'")
                         update_job_status_db(db_conn, db_job_id, 'Downloaded', data_save_path)
+
+                        # If the job data was successfully downloaded, this job can be rerun again
+                        rerun_job = True
+
                     else:
                         logger.error("Error importing job data into dbimport table of database.")
                         logger.info("Updating job status in database from 'Posted' to 'Error'")
@@ -495,6 +474,9 @@ if __name__ == "__main__":
                     logger.info(log_str)
                     update_job_status_db(db_conn, db_job_id, 'Error',
                                          'Failure importing data into dbimport table - see logs for details.')
+
+                    # If the job data was successfully imported, this job can be rerun again
+                    rerun_job = True
 
                 if rows_inserted >= 0:
                     log_str = f"{job_name} data imported into dbimport table for Job ID = {db_job_id}."
@@ -528,6 +510,63 @@ if __name__ == "__main__":
                     f"handle the case where Job Status = {job_status}."
                 logger.error(log_str)
 
-    db_conn.close()
-    logger.info("Database connection closed.")
+        # If this job can be rerun again, update the overall rerun flag
+        _rerun = _rerun or rerun_job
+
+    return _rerun
+
+
+if __name__ == "__main__":
+    # Get the relative project path and determine locations of the log dir and config file
+    PROJECT_PATH = os.path.dirname(os.path.abspath(__file__)).replace('\\', '/')
+    log_path = f"{PROJECT_PATH}/logs"
+    config = ConfigParser()
+    config.read(f"{PROJECT_PATH}/config.ini")
+
+    # Set up logging
+    project_name = config.get('environment', 'project')
+    log_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    logging.config.fileConfig(
+        f"{PROJECT_PATH}/logging_config.ini",
+        disable_existing_loggers=False,
+        defaults={"logfilename": f"{log_path}/{project_name}_{log_timestamp}.log"}
+    )
+    logger = logging.getLogger(__name__)
+
+    # Get all the required parameters
+    ############################################################################################
+    # Get database information
+    SERVER = config.get('database', 'server')
+    DATABASE = config.get('database', 'database')
+    SQL = "EXEC Addepar.usp_GetOpenJobs"
+
+    # Get Addepar API information
+    addepar_key = config.get('addepar_api', 'key')
+    addepar_secret = config.get('addepar_api', 'secret')
+    api_timeout = int(config.get('addepar_api', 'timeout'))
+    addepar_header = addepar_params.HEADER
+    BASE_URL = addepar_params.BASE_URL
+    addepar_auth_string = create_auth_string(addepar_key, addepar_secret)
+    # Add the auth string to the API header
+    addepar_header['Authorization'] = addepar_auth_string
+
+    # Core of the program
+    ############################################################################################
+    # Get data on all the open jobs from the database
+    rerun = True
+    while rerun:
+        # Get data on all the open jobs from the database
+        db_conn = dbutil.connect_to_database(SERVER, DATABASE)
+        log_str = f"Connected to {DATABASE} database on {SERVER} server."
+        logger.info(log_str)
+        open_jobs = dbutil.query_to_list(db_conn, SQL)
+        log_str = f"{len(open_jobs)} open Addepar Jobs"
+        logger.info(log_str)
+
+        rerun = process_all_jobs(open_jobs)
+
+        db_conn.commit()
+        db_conn.close()
+        logger.info("Database connection closed.")
+
     logger.info("Execution complete. Exiting program.")
