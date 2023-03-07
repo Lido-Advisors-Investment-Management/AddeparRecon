@@ -1,7 +1,7 @@
 """
 Program queries database for open Addepar API jobs. Depending on the status of the jobs, the program
 will either POST the job to the Addepar Jobs API, query the status and download the job data, import
-the data into the database by executing the job's import proc, or execute the postimport proc to
+the data into the database by executing the job's import proc, or execute the post-import proc to
 scrub the data in the dbimport table and move it to the target table.
 """
 
@@ -11,15 +11,15 @@ import base64
 import os
 import json
 from datetime import datetime
-import database_utils as dbutil
 import requests
 import pyodbc
+import database_utils as dbutil
 import addepar_params
 
 
 def create_auth_string(key: str, secret: str, method='utf-8') -> str:
     """
-    Create an authorization string per Addepar's sepcifications to access the Jobs API
+    Create an authorization string per Addepar's specifications to access the Jobs API
     https://developers.addepar.com/docs/basic-authentication
 
     Args:
@@ -48,7 +48,7 @@ def post_addepar_job(url: str, header: dict, params: str, response_save_path: st
         params (str): JSON string defining the parameters of the API request
         response_save_path (str, optional): Directory to save the decoded API response.
                 If left blank (''), the response will not be saved. Defaults to ''.
-        timeout (int, optional): Waittime for the API before timing out. Defaults to 300 seconds.
+        timeout (int, optional): Wait time for the API before timing out. Defaults to 300 seconds.
 
     Returns:
         int: Addepar Jobs API job ID if the job was successfully posted and accepted.
@@ -106,7 +106,7 @@ def post_addepar_job(url: str, header: dict, params: str, response_save_path: st
         logger.error(_log_str)
         return None
 
-    # If the job was successfully posted and the Job ID was extracted from the reponse, return it
+    # If the job was successfully posted and the Job ID was extracted from the response, return it
     _log_str = f"API Job accepted by Addepar. Job ID = {job_id}"
     logger.info(_log_str)
     return job_id
@@ -120,7 +120,7 @@ def check_addepar_job_status(base_url: str, job_id: int, header: dict, timeout: 
 
     **Once the job is complete, the response status code will change from 200 to 303.**
     The Addepar Jobs API status query will automatically redirect the request and download the job
-    data once the job is complete. This can cuase issues as the status response is <1KB but the data
+    data once the job is complete. This can cause issues as the status response is <1KB but the data
     payload can be >100KB+. To avoid this, allow_redirects=False in the API query.
 
     Args:
@@ -128,7 +128,7 @@ def check_addepar_job_status(base_url: str, job_id: int, header: dict, timeout: 
         job_id (int): The **Addepar** Jobs API ID of the job
         header (dict): Authorization header dictionary described in the Basic Authentication
                 section of Addepar's website
-        timeout (int, optional): Waittime for the API before timing out. Defaults to 300 seconds
+        timeout (int, optional): Wait time for the API before timing out. Defaults to 300 seconds
 
     Returns:
         float: The completion percentage of the job
@@ -177,7 +177,7 @@ def check_addepar_job_status(base_url: str, job_id: int, header: dict, timeout: 
         _log_str = f"Addepar Job {job_id} percent complete = {addepar_pct_complete} / 1.000"
         logger.info(_log_str)
     except KeyError as err:
-        logger.error("Could not parse the percernt_complete attribute from the response string.")
+        logger.error("Could not parse the percent_complete attribute from the response string.")
         _log_str = f"Key Error: {err}"
         logger.error(_log_str)
 
@@ -198,7 +198,7 @@ def download_addepar_job(base_url: str, job_id: int, header: dict, save_path: st
         header (dict): Authorization header dictionary described in the Basic Authentication
                 section of Addepar's website
         save_path (str): full file path and name to save the returned API Job data
-        timeout (int, optional): Waittime for the API before timing out. Defaults to 300 seconds
+        timeout (int, optional): Wait time for the API before timing out. Defaults to 300 seconds
 
     Returns:
         bool: Success (True) or Failure (False) of downloading the job data
@@ -253,7 +253,7 @@ def update_job_status_db(conn: pyodbc.Connection, job_id: int, to_status: str, t
         conn (pyodbc.Connection): An open connection to a database server
         job_id (int): Unique **database** ID of the job to update the status of
         to_status (str): Status name to update the
-        to_job_details (str): Job detials value to update the database with
+        to_job_details (str): Job details value to update the database with
                 To Posted: The Addepar API job ID
                 To Downloaded: The file path of the JSON data
                 To Imported: The number of rows imported into the dbimport table
@@ -310,7 +310,7 @@ def api_response_to_file(content: str, file_path: str) -> bool:
 
     Args:
         content (str): Decoded API response to write to a file
-        file_path (str): File path to write svae the response to
+        file_path (str): File path to write save the response to
 
     Returns:
         bool: Success (True) or failure (False) of file write
@@ -321,7 +321,7 @@ def api_response_to_file(content: str, file_path: str) -> bool:
         with open(file_path, 'w', encoding='utf-8') as outfile:
             outfile.write(content)
 
-        _log_str = f"Wrote API reponse to file: {file_path}"
+        _log_str = f"Wrote API response to file: {file_path}"
         logger.info(_log_str)
         return True
 
@@ -370,7 +370,7 @@ def exec_import_proc(conn: pyodbc.Connection, sql: str) -> int:
     return _rows_inserted
 
 
-def process_all_jobs(jobs: list) -> bool:
+def process_all_jobs(jobs: list, api_timeout: int = 300) -> bool:
     """
     Process all the open Addepar jobs and return if any of the open jobs can be rerun immediately,
     before stopping the programs execution. Jobs can only be reprocessed immediately after
@@ -383,6 +383,8 @@ def process_all_jobs(jobs: list) -> bool:
 
     Args:
         jobs (list): open Addepar jobs with all the details required to complete the next process
+        api_timeout (int, optional): Wait time for the API before timing out.
+                Defaults to 300 seconds
 
     Return:
         bool: denoting if any of the Addepar jobs can be rerun immediately before exiting python.
@@ -392,7 +394,7 @@ def process_all_jobs(jobs: list) -> bool:
     _rerun = False
 
     # Loop through each open job
-    for job in open_jobs:
+    for job in jobs:
         # Initialize the rerun flag for this particular job
         rerun_job = False
 
@@ -402,12 +404,10 @@ def process_all_jobs(jobs: list) -> bool:
         job_date = job['AsOfDate']              # Date as of which the job is being run
         job_status = job['StatusName']          # Current status of the job
         job_details = job['QueryParameters']    # Data required to complete the next step of the job
-        """
-        If job status is 'Queued' job_details is the required Addepar API job parameters
-        If job status is 'Posted' job_detials is the Addepar Job ID of the API query
-        If job status is 'Downloaded' job_detials is the full file path where the API data was saved
-        If job status is 'Imported' job_detials is the number of rows imported to into the DB
-        """
+        # If job status is 'Queued' job_details is required Addepar API job parameters
+        # If job status is 'Posted' job_details is Addepar Job ID of the API query
+        # If job status is 'Downloaded' job_details is full file path where the API data was saved
+        # If job status is 'Imported' job_details is number of rows imported to into the DB
 
         # Direct traffic based on the current job status
         _log_str = f"Processing Job ID = {db_job_id}, job type = {job_name}, "\
@@ -497,9 +497,9 @@ def process_all_jobs(jobs: list) -> bool:
 
             case _:
                 # Status is not matched - return an error
-                log_str = "Unexpected job status returned. Please add code to "\
+                _log_str = "Unexpected job status returned. Please add code to "\
                     f"handle the case where Job Status = {job_status}."
-                logger.error(log_str)
+                logger.error(_log_str)
 
         _log_str = f"Processing Job ID = {db_job_id} complete.\n"
         logger.info(_log_str)
@@ -534,12 +534,12 @@ if __name__ == "__main__":
     SQL = "EXEC Addepar.usp_GetOpenJobs"
 
     # Get Addepar API information
-    addepar_key = config.get('addepar_api', 'key')
-    addepar_secret = config.get('addepar_api', 'secret')
-    api_timeout = int(config.get('addepar_api', 'timeout'))
+    ADDEPAR_KEY = config.get('addepar_api', 'key')
+    ADDEPAR_SECRET = config.get('addepar_api', 'secret')
+    API_TIMEOUT = int(config.get('addepar_api', 'timeout'))
     addepar_header = addepar_params.HEADER
     BASE_URL = addepar_params.BASE_URL
-    addepar_auth_string = create_auth_string(addepar_key, addepar_secret)
+    addepar_auth_string = create_auth_string(ADDEPAR_KEY, ADDEPAR_SECRET)
     # Add the auth string to the API header
     addepar_header['Authorization'] = addepar_auth_string
 
