@@ -1,8 +1,11 @@
-import pandas as pd
-import pyodbc
-import warnings
+"""
+Provide
+"""
 from collections import Counter
 import math
+import warnings
+import pyodbc
+import pandas as pd
 
 
 def connect_to_database(
@@ -11,7 +14,7 @@ def connect_to_database(
         driver: str = 'SQL Server',
         username: str = '',
         password: str = '',
-        debug=False
+        debug: bool = False
 ) -> pyodbc.Connection:
     """
     Connect to the passed server and database.
@@ -35,7 +38,7 @@ def connect_to_database(
 
     Returns:
         pyodbc.Connection: a pyodbc connection object representing the connection to the provided
-                server and databse.
+                server and database.
     """
 
     # Construct the connection string
@@ -76,7 +79,7 @@ def list_bulk_insert(
                 'schema_name.table_name'
         data (list): A list containing the data to insert,
         column_list (list): list of database column names. The position of each column name in this
-                list must match the position of the correspoding data values in the data record
+                list must match the position of the corresponding data values in the data record
                 tuples in the passed data list.
                 *Database columns must be unique - this will be validated
         debug (bool, optional): If False, will run normally and return a connection object.
@@ -84,7 +87,7 @@ def list_bulk_insert(
                 Defaults to False.
 
     Return:
-        bool: Returns True if the data lsit was successfully loaded to the database.
+        bool: Returns True if the data list was successfully loaded to the database.
     """
 
     # Validate input data and column_list
@@ -100,7 +103,7 @@ def list_bulk_insert(
         raise ValueError('Error: database column names provided in column_list must be unique.')
 
     # Ensure all the records in data are the same size
-    # Create a dictionary of each unique record lenght and the frequency of the length
+    # Create a dictionary of each unique record length and the frequency of the length
     record_len_freq = dict(Counter([len(x) for x in data]))
     if len(record_len_freq) > 1:
         raise ValueError('Error: all data record tuples in the data list must be the same length.')
@@ -165,19 +168,19 @@ def dataframe_bulk_insert(
                 Defaults to False.
 
     Return:
-        bool: Returns True if the data lsit was successfully loaded to the database.
+        bool: Returns True if the data list was successfully loaded to the database.
     """
 
     # Validate input dataframe and column_map
-    if not (set(column_map.values()).issubset(set(df.columns))):
+    if not set(column_map.values()).issubset(set(df.columns)):
         raise ValueError('''Error: the provided dataframe does not contain all the columns
                             specified by the column_map values.''')
 
-    # Extraxt the database column names from the column map dictionary keys
+    # Extract the database column names from the column map dictionary keys
     column_list = list(column_map.keys())
 
     # Convert the provided dataframe into a list of tuples
-    # While performing the coversion, also take the subset of columns as specified in the
+    # While performing the conversion, also take the subset of columns as specified in the
     # column_map dictionary and convert all NaN values to None, which will map to NULL in
     # SQL Server (NaN will cause an error).
     ls = [tuple(None if isinstance(i, float) and math.isnan(i) else i for i in r)
