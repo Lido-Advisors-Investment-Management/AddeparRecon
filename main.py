@@ -520,7 +520,7 @@ if __name__ == "__main__":
     project_name = config.get('environment', 'project')
     log_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     logging.config.fileConfig(
-        f"{PROJECT_PATH}/logging_config.ini",
+        f"{PROJECT_PATH}/config.ini",
         disable_existing_loggers=False,
         defaults={"logfilename": f"{log_path}/{project_name}_{log_timestamp}.log"}
     )
@@ -529,13 +529,12 @@ if __name__ == "__main__":
     # Get all the required parameters
     ############################################################################################
     # Get database information
-    SERVER = config.get('database', 'server')
-    DATABASE = config.get('database', 'database')
+    CONN_STR = os.environ.get('MSSQL_PYCONN_STRING')
     SQL = "EXEC Addepar.usp_GetOpenJobs"
 
     # Get Addepar API information
-    ADDEPAR_KEY = config.get('addepar_api', 'key')
-    ADDEPAR_SECRET = config.get('addepar_api', 'secret')
+    ADDEPAR_KEY = os.environ.get('ADDEPAR_API.KEY')
+    ADDEPAR_SECRET = os.environ.get('ADDEPAR_API.SECRET')
     API_TIMEOUT = int(config.get('addepar_api', 'timeout'))
     addepar_header = addepar_params.HEADER
     BASE_URL = addepar_params.BASE_URL
@@ -549,9 +548,8 @@ if __name__ == "__main__":
     rerun = True
     while rerun:
         # Get data on all the open jobs from the database
-        db_conn = dbutil.connect_to_database(SERVER, DATABASE)
-        log_str = f"Connected to {DATABASE} database on {SERVER} server."
-        logger.info(log_str)
+        db_conn = pyodbc.connect(CONN_STR)
+        logger.info("Connected to database")
         open_jobs = dbutil.query_to_list(db_conn, SQL)
         log_str = f"{len(open_jobs)} open Addepar Jobs\n"
         logger.info(log_str)
