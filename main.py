@@ -510,19 +510,15 @@ def process_all_jobs(jobs: list, api_timeout: int = 300) -> bool:
 
 
 if __name__ == "__main__":
-    # Get the relative project path and determine locations of the log dir and config file
-    PROJECT_PATH = os.path.dirname(os.path.abspath(__file__)).replace('\\', '/')
-    log_path = f"{PROJECT_PATH}/logs"
-    config = ConfigParser()
-    config.read(f"{PROJECT_PATH}/config.ini")
-
     # Set up logging
+    config = ConfigParser()
+    config.read("config.ini")
     project_name = config.get('environment', 'project')
     log_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     logging.config.fileConfig(
-        f"{PROJECT_PATH}/config.ini",
+        "config.ini",
         disable_existing_loggers=False,
-        defaults={"logfilename": f"{log_path}/{project_name}_{log_timestamp}.log"}
+        defaults={"logfilename": f"logs/{project_name}_{log_timestamp}.log"}
     )
     logger = logging.getLogger(__name__)
 
