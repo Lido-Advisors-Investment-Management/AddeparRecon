@@ -4,7 +4,7 @@ Provide
 from collections import Counter
 import math
 import warnings
-import pyodbc
+import pymssql
 import pandas as pd
 
 
@@ -15,7 +15,7 @@ def connect_to_database(
         username: str = '',
         password: str = '',
         debug: bool = False
-) -> pyodbc.Connection:
+) -> pymssql.Connection:
     """
     Connect to the passed server and database.
     *By default, this method will use Windows Authentication ('Trusted_Connection=Yes' in the
@@ -37,7 +37,7 @@ def connect_to_database(
                 Defaults to False.
 
     Returns:
-        pyodbc.Connection: a pyodbc connection object representing the connection to the provided
+        pymssql.Connection: a pymssql connection object representing the connection to the provided
                 server and database.
     """
 
@@ -56,14 +56,14 @@ def connect_to_database(
 
     # Attempt to connect to the database server
     try:
-        conn = pyodbc.connect(conn_str)
+        conn = pymssql.connect(conn_str)
         return conn
-    except pyodbc.Error as err:
+    except pymssql.Error as err:
         raise err
 
 
 def list_bulk_insert(
-        conn: pyodbc.Connection,
+        conn: pymssql.Connection,
         table_name: str,
         data: list,
         column_list: list,
@@ -74,7 +74,7 @@ def list_bulk_insert(
     list of database column names.
 
     Args:
-        conn (pyodbc.Connection): An open connection to a database server
+        conn (pymssql.Connection): An open connection to a database server
         table (str): The table name the data will be inserted into prefixed with the schema name:
                 'schema_name.table_name'
         data (list): A list containing the data to insert,
@@ -131,17 +131,16 @@ def list_bulk_insert(
     try:
         cursor = conn.cursor()
         cursor.executemany(sql, data)
-        cursor.commit()
         cursor.close()
         return True
-    except pyodbc.Error as err:
+    except pymssql.Error as err:
         cursor.close()
         print(err)
         return False
 
 
 def dataframe_bulk_insert(
-        conn: pyodbc.Connection,
+        conn: pymssql.Connection,
         table_name: str,
         df: pd.DataFrame,
         column_map: dict,
@@ -152,7 +151,7 @@ def dataframe_bulk_insert(
     mapping the dataframe columns to database columns.
 
     Args:
-        conn (pyodbc.Connection): An open connection to a database server
+        conn (pymssql.Connection): An open connection to a database server
         table (str): The table name the data will be inserted into prefixed with the schema name:
                 'schema_name.table_name'
         df (pd.DataFrame): data to be inserted into the database.
@@ -197,7 +196,7 @@ def query_to_list(conn, sql) -> list:
     Executes the passed sql query and returns the results formatted as a list of dicts.
 
     Args:
-        conn (pyodbc.Connection): An open connection to a database server
+        conn (pymssql.Connection): An open connection to a database server
         sql (string): SQL to execute
 
     Returns:
@@ -208,7 +207,8 @@ def query_to_list(conn, sql) -> list:
 
     try:
         # Execute the SQL
-        cursor = conn.cursor().execute(sql)
+        cursor = conn.cursor()
+        cursor.execute(sql)
 
         # Extract the columns from the cursor
         columns = [column[0] for column in cursor.description]
@@ -218,7 +218,7 @@ def query_to_list(conn, sql) -> list:
 
         # Clean up
         cursor.close()
-    except pyodbc.Error as err:
+    except pymssql.Error as err:
         if cursor is not None:
             cursor.close()
         print(err)
@@ -226,8 +226,3 @@ def query_to_list(conn, sql) -> list:
         return
 
     return results
-
-
-# debug
-if __name__ == "__main__":
-    pass

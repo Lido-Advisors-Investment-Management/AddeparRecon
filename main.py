@@ -12,7 +12,7 @@ import os
 import json
 from datetime import datetime
 import requests
-import pyodbc
+import pymssql
 import database_utils as dbutil
 import addepar_params
 
@@ -243,14 +243,14 @@ def download_addepar_job(base_url: str, job_id: int, header: dict, save_path: st
     return True
 
 
-def update_job_status_db(conn: pyodbc.Connection, job_id: int, to_status: str, to_job_details: str) -> bool:
+def update_job_status_db(conn: pymssql.Connection, job_id: int, to_status: str, to_job_details: str) -> bool:
     """
     Update a specific job's status in the database JobQueue table using the
     Addepar.usp_UpdateJobQueueStatus stored procedure.
     *Job statuses should only be updated using this proc to ensure the audit data is also updated.
 
     Args:
-        conn (pyodbc.Connection): An open connection to a database server
+        conn (pymssql.Connection): An open connection to a database server
         job_id (int): Unique **database** ID of the job to update the status of
         to_status (str): Status name to update the
         to_job_details (str): Job details value to update the database with
@@ -274,17 +274,15 @@ def update_job_status_db(conn: pyodbc.Connection, job_id: int, to_status: str, t
     try:
         # Execute the SQL
         logger.debug(sql)
-        cursor = conn.cursor().execute(sql)
+        cursor = conn.cursor()
+        cursor.execute(sql)
 
         # The proc returns a success or failure boolean
         update_success = cursor.fetchone()[0]
 
-        # Since this proc updates a db table, need to commit it
-        cursor.commit()
-
         # Clean up
         cursor.close()
-    except pyodbc.Error as err:
+    except pymssql.Error as err:
         if cursor is not None:
             cursor.close()
         _log_str = f"SQL error encountered. Job ID = {job_id} was not updated."
@@ -332,12 +330,12 @@ def api_response_to_file(content: str, file_path: str) -> bool:
         return False
 
 
-def exec_import_proc(conn: pyodbc.Connection, sql: str) -> int:
+def exec_import_proc(conn: pymssql.Connection, sql: str) -> int:
     """
     Execute a post import proc string returned by SQL. Return the number of rows processed.
 
     Args:
-        conn (pyodbc.Connection): An open connection to a database server
+        conn (pymssql.Connection): An open connection to a database server
         sql (str): SQL EXEC string to execute
 
     Returns:
@@ -348,17 +346,15 @@ def exec_import_proc(conn: pyodbc.Connection, sql: str) -> int:
     try:
         # Execute the SQL
         logger.debug(sql)
-        cursor = conn.cursor().execute(sql)
+        cursor = conn.cursor()
+        cursor.execute(sql)
 
         # The proc returns a success or failure boolean
         _rows_inserted = cursor.fetchone()[0]
 
-        # Since this proc updates a db table, need to commit it
-        cursor.commit()
-
         # Clean up
         cursor.close()
-    except pyodbc.Error as err:
+    except pymssql.Error as err:
         if cursor is not None:
             cursor.close()
         logger.error("SQL error encountered executing proc. Data was not processed.")
@@ -416,7 +412,8 @@ def process_all_jobs(jobs: list, api_timeout: int = 300) -> bool:
         match job_status:
             case 'Queued':
                 # Job is queued, the Addepar API job needs to be posted
-                addepar_job_id = post_addepar_job(BASE_URL, addepar_header, job_details, log_path, api_timeout)
+                addepar_job_id = post_addepar_job(BASE_URL, addepar_header, job_details,
+                                                  response_save_path='logs/', timeout=api_timeout)
 
                 # If the post_addepar_job returns None, an error was encountered
                 # Otherwise, it returns the integer Addepar API Job ID of the posted job
@@ -442,7 +439,7 @@ def process_all_jobs(jobs: list, api_timeout: int = 300) -> bool:
                 elif job_pct_complete == 1:
                     # Job was successfully completed download it now
                     logger.info("Addepar API job complete. Downloading it now.")
-                    data_save_path = f'{PROJECT_PATH}/data/{job_name}_{job_date}.json'
+                    data_save_path = f'data/{job_name}_{job_date}.json'
 
                     if download_addepar_job(BASE_URL, job_details, addepar_header, data_save_path, api_timeout):
                         update_job_status_db(db_conn, db_job_id, 'Downloaded', data_save_path)
@@ -544,9 +541,14 @@ if __name__ == "__main__":
     rerun = True
     while rerun:
         # Get data on all the open jobs from the database
-        db_conn = pyodbc.connect(CONN_STR)
+        db_conn = pymssql.connect(
+            server='eu-az-sql-serv1.database.windows.net',
+            database='dlavnozlvyw33no',
+            user='ux0pv970bzf8zzx',
+            password='lIbQnEIiHmV751!@2J7JOK2YO')
         logger.info("Connected to database")
         open_jobs = dbutil.query_to_list(db_conn, SQL)
+        print(open_jobs)
         log_str = f"{len(open_jobs)} open Addepar Jobs\n"
         logger.info(log_str)
 
